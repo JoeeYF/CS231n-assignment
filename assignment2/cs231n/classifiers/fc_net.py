@@ -178,9 +178,9 @@ class FullyConnectedNet(object):
             self.params['W' + str(i + 1)] = np.random.randn(self.num_everylayer[i], self.num_everylayer[i+1]) * weight_scale
             self.params['b' + str(i + 1)] = np.zeros(self.num_everylayer[i+1])
             
-#             if self.normalization=='batchnorm' and i < len(num_neurons) - 2:
-#                 self.params['beta' + str(i + 1)] = np.zeros([num_neurons[i+1]])
-#                 self.params['gamma' + str(i + 1)] = np.ones([num_neurons[i+1]])
+            if (self.normalization=='batchnorm' or self.normalization=='layernorm') and i < self.num_layers - 1:
+                self.params['beta' + str(i + 1)] = np.zeros([self.num_everylayer[i+1]])
+                self.params['gamma' + str(i + 1)] = np.ones([self.num_everylayer[i+1]])
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -200,10 +200,11 @@ class FullyConnectedNet(object):
         # of the first batch normalization layer, self.bn_params[1] to the forward
         # pass of the second batch normalization layer, etc.
         self.bn_params = []
+        self.ln_params = []
         if self.normalization=='batchnorm':
             self.bn_params = [{'mode': 'train'} for i in range(self.num_layers - 1)]
         if self.normalization=='layernorm':
-            self.bn_params = [{} for i in range(self.num_layers - 1)]
+            self.ln_params = [{} for i in range(self.num_layers - 1)]
 
         # Cast all parameters to the correct datatype
         for k, v in self.params.items():
@@ -239,12 +240,18 @@ class FullyConnectedNet(object):
         # self.bn_params[1] to the forward pass for the second batch normalization #
         # layer, etc.                                                              #
         ############################################################################
-        caches = list(range(self.num_layers))
+        caches = {}
         for i in range(self.num_layers):
-            if i == self.num_layers-1:
-                scores, caches[i] = affine_forward(scores,self.params['W'+str(i+1)],self.params['b'+str(i+1)])
-            else:
-                scores, caches[i] = affine_relu_forward(scores,self.params['W'+str(i+1)],self.params['b'+str(i+1)])
+            scores, caches['fc'+str(i)] = affine_forward(scores,self.params['W'+str(i+1)],self.params['b'+str(i+1)])
+            if i != self.num_layers-1:
+                if self.normalization == "batchnorm":
+                    scores,caches['bn'+str(i)]=batchnorm_forward(scores,self.params['gamma'+str(i+1)],self.params['beta'+str(i+1)],self.bn_params[i])
+                if self.normalization == "layernorm":
+                    scores,caches['ln'+str(i)]=layernorm_forward(scores,self.params['gamma'+str(i+1)],self.params['beta'+str(i+1)],self.ln_params[i])
+                scores,caches['relu'+str(i)]=relu_forward(scores)
+                if self.use_dropout:
+                    scores, cache['dropout'+str(i)] = dropout_forward(scores, self.dropout_param)
+                
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -270,10 +277,15 @@ class FullyConnectedNet(object):
         loss, dlast = softmax_loss(scores,y)
         for i in range(self.num_layers-1,-1,-1):
             loss += 0.5 * self.reg * np.sum(self.params['W' + str(i+1)]**2)
-            if i == self.num_layers-1:
-                dlast, grads['W'+str(i+1)], grads['b'+str(i+1)] = affine_backward(dlast,caches[i])
-            else:
-                dlast, grads['W'+str(i+1)], grads['b'+str(i+1)] = affine_relu_backward(dlast,caches[i])
+            if i != self.num_layers-1:
+                if self.use_dropout:
+                    dlast = dropout_backward(dlast, caches['dropout' + str(i)])
+                dlast = relu_backward(dlast, caches['relu' + str(i)])
+                if self.normalization == "batchnorm":
+                    dlast, grads['gamma'+str(i+1)], grads['beta'+str(i+1)] = batchnorm_backward(dlast, caches['bn'+str(i)])
+                if self.normalization == "layernorm":
+                    dlast, grads['gamma'+str(i+1)], grads['beta'+str(i+1)] = layernorm_backward(dlast, caches['ln'+str(i)])
+            dlast, grads['W'+str(i+1)], grads['b'+str(i+1)] = affine_backward(dlast,caches['fc' + str(i)])
             grads['W'+str(i+1)] += self.reg * self.params['W' + str(i+1)]
         ############################################################################
         #                             END OF YOUR CODE                             #
