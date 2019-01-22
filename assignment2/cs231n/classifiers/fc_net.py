@@ -250,7 +250,7 @@ class FullyConnectedNet(object):
                     scores,caches['ln'+str(i)]=layernorm_forward(scores,self.params['gamma'+str(i+1)],self.params['beta'+str(i+1)],self.ln_params[i])
                 scores,caches['relu'+str(i)]=relu_forward(scores)
                 if self.use_dropout:
-                    scores, cache['dropout'+str(i)] = dropout_forward(scores, self.dropout_param)
+                    scores, caches['dropout'+str(i)] = dropout_forward(scores, self.dropout_param)
                 
         ############################################################################
         #                             END OF YOUR CODE                             #
